@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GRAB — YouTube Downloader</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <!-- Background layers -->
+  <div class="bg-grid"></div>
+  <div class="bg-glow glow-1"></div>
+  <div class="bg-glow glow-2"></div>
+  <div class="bg-glow glow-3"></div>
+  <div class="bg-noise"></div>
+
+  <main class="shell">
+    <header class="hero">
+      <div class="badge">
+        <span class="dot"></span> yt-dlp engine · online
+      </div>
+      <h1 class="title">
+        <span class="line">DOWNLOAD</span>
+        <span class="line gradient">ANY VIDEO</span>
+      </h1>
+      <p class="sub">Paste a link. Pick a quality. Done in seconds — no ads, no nonsense.</p>
+    </header>
+
+    <section class="card search-card">
+      <div class="card-inner">
+        <form id="form" class="search">
+          <svg class="link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+          </svg>
+          <input id="url" type="text" placeholder="https://youtube.com/watch?v=…" autocomplete="off" spellcheck="false" />
+          <button id="fetchBtn" type="submit">
+            <span class="btn-label">Fetch</span>
+            <span class="spinner" hidden></span>
+            <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+          </button>
+        </form>
+      </div>
+      <div id="error" class="error" hidden></div>
+    </section>
+
+    <section id="result" class="card result-card" hidden>
+      <div class="card-inner">
+        <div class="meta">
+          <div class="thumb-wrap">
+            <img id="thumb" alt="" />
+            <span id="duration" class="duration"></span>
+          </div>
+          <div class="info">
+            <h2 id="title"></h2>
+            <p id="uploader" class="uploader"></p>
+            <p id="views" class="views"></p>
+          </div>
+        </div>
+
+        <div class="formats">
+          <span class="formats-label">// select quality</span>
+          <div id="formatList" class="format-list"></div>
+        </div>
+
+        <button id="downloadBtn" class="download-btn" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          <span>Download</span>
+        </button>
+
+        <div id="progressWrap" class="progress-wrap" hidden>
+          <div class="progress-head">
+            <span id="progressLabel">Starting…</span>
+            <span id="progressStats" class="stats"></span>
+          </div>
+          <div class="progress-track">
+            <div id="progressBar" class="progress-bar"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="foot">
+      <span>For personal use · respect copyright &amp; YouTube's Terms</span>
+    </footer>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

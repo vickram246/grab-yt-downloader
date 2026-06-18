@@ -1,0 +1,8 @@
+node_modules
+downloads/*
+!downloads/.gitkeep
+npm-debug.log
+.git
+.gitignore
+*.md
+cookies.txt

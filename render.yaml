@@ -1,0 +1,15 @@
+# Render Blueprint — deploy with one click from a connected GitHub repo.
+# Render builds the Dockerfile in the cloud; no local Docker needed.
+services:
+  - type: web
+    name: grab-yt-downloader
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Optional: paste cookies.txt contents here to bypass YouTube's bot check.
+      # - key: YTDLP_COOKIES_CONTENT
+      #   sync: false
