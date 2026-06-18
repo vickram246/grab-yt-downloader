@@ -19,6 +19,58 @@ const PORT = process.env.PORT || 3000;
 const YTDLP = process.env.YTDLP_PATH || "yt-dlp";
 const FFMPEG_DIR = process.env.FFMPEG_DIR || ""; // dir containing ffmpeg, optional
 
+// aria2c is an optional multi-connection accelerator. If it's on PATH (or pointed
+// at by ARIA2C_PATH), yt-dlp hands downloads off to it for much faster transfers.
+const ARIA2C = process.env.ARIA2C_PATH || which("aria2c");
+
+function which(bin) {
+  const exts = process.platform === "win32" ? [".exe", ".cmd", ""] : [""];
+  for (const dir of (process.env.PATH || "").split(path.delimiter)) {
+    for (const ext of exts) {
+      const p = path.join(dir, bin + ext);
+      try { if (fs.existsSync(p)) return p; } catch {}
+    }
+  }
+  return "";
+}
+
+// Resilience flags applied to every download: retry hard, fetch fragments in
+// parallel, and (when available) use aria2c with 16 connections per file.
+function hardeningArgs() {
+  const args = [
+    "--retries", "infinite",
+    "--fragment-retries", "infinite",
+    "--retry-sleep", "exp=1:30",
+    "--socket-timeout", "20",
+    "--concurrent-fragments", "8",
+    "--no-warnings",
+  ];
+  if (ARIA2C) {
+    args.push(
+      "--downloader", "aria2c",
+      "--downloader-args",
+      "aria2c:-x16 -s16 -k1M --max-tries=0 --retry-wait=2"
+    );
+  }
+  return args;
+}
+
+// Self-heal: ask yt-dlp to update itself on boot so it keeps working after
+// YouTube changes. Best-effort — never blocks startup, never crashes.
+function selfUpdate() {
+  try {
+    const p = spawn(YTDLP, ["-U"], { windowsHide: true });
+    let out = "";
+    p.stdout.on("data", (d) => (out += d));
+    p.stderr.on("data", (d) => (out += d));
+    p.on("error", () => {});
+    p.on("close", () => {
+      const line = out.split("\n").map((l) => l.trim()).filter(Boolean).pop();
+      if (line) console.log("  yt-dlp:", line);
+    });
+  } catch {}
+}
+
 // YouTube blocks many datacenter IPs with a "confirm you're not a bot" check.
 // Supplying browser cookies sidesteps it. Provide EITHER a path (YTDLP_COOKIES)
 // or the raw cookies.txt contents in an env var (YTDLP_COOKIES_CONTENT), which
@@ -136,6 +188,7 @@ app.post("/api/download", (req, res) => {
   const args = [
     "--no-playlist",
     "--newline",
+    ...hardeningArgs(),
     "-o", outTmpl,
     "-f", formatId,
   ];
@@ -172,21 +225,32 @@ app.post("/api/download", (req, res) => {
   proc.stdout.on("data", (d) => {
     buf += d.toString();
     let nl;
-    while ((nl = buf.indexOf("\n")) >= 0) {
+    while ((nl = buf.search(/[\r\n]/)) >= 0) {
       const line = buf.slice(0, nl).trim();
       buf = buf.slice(nl + 1);
-      handleLine(line);
+      if (line) handleLine(line);
     }
   });
 
   function handleLine(line) {
-    // Progress lines: [download]  42.3% of 10.00MiB at 2.00MiB/s ETA 00:03
+    // Native yt-dlp:  [download]  42.3% of 10.00MiB at 2.00MiB/s ETA 00:03
     const m = line.match(/\[download\]\s+([\d.]+)%/);
     if (m) {
       job.percent = parseFloat(m[1]);
       const sp = line.match(/at\s+([\d.]+\w+\/s)/);
       const eta = line.match(/ETA\s+([\d:]+)/);
       job.speed = sp ? sp[1] : job.speed;
+      job.eta = eta ? eta[1] : job.eta;
+      push({ type: "progress", percent: job.percent, speed: job.speed, eta: job.eta });
+      return;
+    }
+    // aria2c:  [#abc123 12MiB/50MiB(24%) CN:16 DL:5.0MiB ETA:8s]
+    const a = line.match(/\((\d+)%\)/);
+    if (a && /DL:|CN:/.test(line)) {
+      job.percent = parseInt(a[1], 10);
+      const sp = line.match(/DL:([\d.]+\w+)/);
+      const eta = line.match(/ETA:(\w+)/);
+      job.speed = sp ? sp[1] + "/s" : job.speed;
       job.eta = eta ? eta[1] : job.eta;
       push({ type: "progress", percent: job.percent, speed: job.speed, eta: job.eta });
       return;
@@ -198,8 +262,21 @@ app.post("/api/download", (req, res) => {
     }
   }
 
+  // aria2c writes its progress readout to stderr — parse it there too, while
+  // still keeping the text around for error reporting.
   let stderr = "";
-  proc.stderr.on("data", (d) => (stderr += d.toString()));
+  let ebuf = "";
+  proc.stderr.on("data", (d) => {
+    const s = d.toString();
+    stderr += s;
+    ebuf += s;
+    let nl;
+    while ((nl = ebuf.search(/[\r\n]/)) >= 0) {
+      const line = ebuf.slice(0, nl).trim();
+      ebuf = ebuf.slice(nl + 1);
+      if (line) handleLine(line);
+    }
+  });
 
   proc.on("close", (code) => {
     if (code === 0 && job.file) {
@@ -274,5 +351,7 @@ app.get("/api/file/:id", (req, res) => {
 });
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`\n  ▶  YouTube Downloader running on port ${PORT}\n`);
+  console.log(`\n  ▶  YouTube Downloader running on port ${PORT}`);
+  console.log(`     accelerator: ${ARIA2C ? "aria2c (16x connections)" : "yt-dlp native"}`);
+  selfUpdate();
 });

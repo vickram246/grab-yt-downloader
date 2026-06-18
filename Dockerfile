@@ -7,6 +7,7 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends \
        ffmpeg \
        python3 \
+       aria2 \
        ca-certificates \
        curl \
   && curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
