@@ -19,40 +19,20 @@ const PORT = process.env.PORT || 3000;
 const YTDLP = process.env.YTDLP_PATH || "yt-dlp";
 const FFMPEG_DIR = process.env.FFMPEG_DIR || ""; // dir containing ffmpeg, optional
 
-// aria2c is an optional multi-connection accelerator. If it's on PATH (or pointed
-// at by ARIA2C_PATH), yt-dlp hands downloads off to it for much faster transfers.
-const ARIA2C = process.env.ARIA2C_PATH || which("aria2c");
-
-function which(bin) {
-  const exts = process.platform === "win32" ? [".exe", ".cmd", ""] : [""];
-  for (const dir of (process.env.PATH || "").split(path.delimiter)) {
-    for (const ext of exts) {
-      const p = path.join(dir, bin + ext);
-      try { if (fs.existsSync(p)) return p; } catch {}
-    }
-  }
-  return "";
-}
-
-// Resilience flags applied to every download: retry hard, fetch fragments in
-// parallel, and (when available) use aria2c with 16 connections per file.
+// Resilience flags applied to every download: bounded retries with backoff and
+// parallel fragment fetching. NOTE: do NOT hand downloads to aria2c — YouTube's
+// media servers reject its request pattern with 403 (aria2c exit code 22),
+// which breaks every download. yt-dlp's native downloader with concurrent
+// fragments is both compatible and fast.
 function hardeningArgs() {
-  const args = [
-    "--retries", "infinite",
-    "--fragment-retries", "infinite",
-    "--retry-sleep", "exp=1:30",
+  return [
+    "--retries", "10",
+    "--fragment-retries", "10",
+    "--retry-sleep", "exp=1:20",
     "--socket-timeout", "20",
-    "--concurrent-fragments", "8",
+    "--concurrent-fragments", "16",
     "--no-warnings",
   ];
-  if (ARIA2C) {
-    args.push(
-      "--downloader", "aria2c",
-      "--downloader-args",
-      "aria2c:-x16 -s16 -k1M --max-tries=0 --retry-wait=2"
-    );
-  }
-  return args;
 }
 
 // Self-heal: ask yt-dlp to update itself on boot so it keeps working after
@@ -244,17 +224,6 @@ app.post("/api/download", (req, res) => {
       push({ type: "progress", percent: job.percent, speed: job.speed, eta: job.eta });
       return;
     }
-    // aria2c:  [#abc123 12MiB/50MiB(24%) CN:16 DL:5.0MiB ETA:8s]
-    const a = line.match(/\((\d+)%\)/);
-    if (a && /DL:|CN:/.test(line)) {
-      job.percent = parseInt(a[1], 10);
-      const sp = line.match(/DL:([\d.]+\w+)/);
-      const eta = line.match(/ETA:(\w+)/);
-      job.speed = sp ? sp[1] + "/s" : job.speed;
-      job.eta = eta ? eta[1] : job.eta;
-      push({ type: "progress", percent: job.percent, speed: job.speed, eta: job.eta });
-      return;
-    }
     // The final printed filepath (after_move) — not prefixed by yt-dlp tags.
     if (line && !line.startsWith("[") && fs.existsSync(line)) {
       job.file = line;
@@ -262,8 +231,8 @@ app.post("/api/download", (req, res) => {
     }
   }
 
-  // aria2c writes its progress readout to stderr — parse it there too, while
-  // still keeping the text around for error reporting.
+  // Some progress lines land on stderr — parse it there too, while still
+  // keeping the text around for error reporting.
   let stderr = "";
   let ebuf = "";
   proc.stderr.on("data", (d) => {
@@ -352,6 +321,5 @@ app.get("/api/file/:id", (req, res) => {
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`\n  ▶  YouTube Downloader running on port ${PORT}`);
-  console.log(`     accelerator: ${ARIA2C ? "aria2c (16x connections)" : "yt-dlp native"}`);
   selfUpdate();
 });
